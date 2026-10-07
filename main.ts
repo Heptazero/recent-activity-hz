@@ -626,36 +626,48 @@ export default class RecentFilesPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    const entry = this.data.recentFiles.find(
-      (recentFile) => recentFile.path === oldPath,
-    );
-    const dismissedAt = this.data.dismissedFiles[oldPath];
-    if (dismissedAt) {
-      this.data.dismissedFiles[file.path] = dismissedAt;
-      delete this.data.dismissedFiles[oldPath];
+    const matches = (path: string): boolean => path === oldPath || path.startsWith(`${oldPath}/`);
+    const nextPath = (path: string): string => file.path + path.slice(oldPath.length);
+    let changed = false;
+    for (const entry of this.data.recentFiles) {
+      if (!matches(entry.path)) continue;
+      const wasFile = entry.path === oldPath;
+      entry.path = nextPath(entry.path);
+      if (wasFile) entry.basename = this.trimExtension(file.name);
+      changed = true;
     }
-    if (entry) {
-      entry.path = file.path;
-      entry.basename = this.trimExtension(file.name);
+    for (const path of Object.keys(this.data.dismissedFiles)) {
+      if (!matches(path)) continue;
+      this.data.dismissedFiles[nextPath(path)] = this.data.dismissedFiles[path];
+      delete this.data.dismissedFiles[path];
+      changed = true;
+    }
+    if (changed) {
+      this.data.recentFiles = this.data.recentFiles.filter(this.shouldAddFile);
       this.redrawView();
+      await this.saveData();
     }
-    if (entry || dismissedAt) await this.saveData();
   };
 
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
-    const dismissedAt = this.data.dismissedFiles[file.path];
-    delete this.data.dismissedFiles[file.path];
+    const matches = (path: string): boolean => path === file.path || path.startsWith(`${file.path}/`);
+    let dismissed = false;
+    for (const path of Object.keys(this.data.dismissedFiles)) {
+      if (!matches(path)) continue;
+      delete this.data.dismissedFiles[path];
+      dismissed = true;
+    }
     const beforeLen = this.data.recentFiles.length;
     this.data.recentFiles = this.data.recentFiles.filter(
-      (recentFile) => recentFile.path !== file.path,
+      (recentFile) => !matches(recentFile.path),
     );
 
     if (beforeLen !== this.data.recentFiles.length) {
       this.redrawView();
     }
-    if (beforeLen !== this.data.recentFiles.length || dismissedAt) {
+    if (beforeLen !== this.data.recentFiles.length || dismissed) {
       await this.saveData();
     }
   };
