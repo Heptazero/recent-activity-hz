@@ -1,30 +1,26 @@
-# Recent Files for Obsidian
+# Recent Activity HZ
 
-This plugin displays a list of most recently opened files in the sidebar.
-Optionally, exclude certain paths, frontmatter tags, or bookmarked files. 
+这是 [Recent Files](https://github.com/tgrosinger/recent-files-obsidian) 的独立改版。它在侧边栏合并显示最近打开、新建和修改的文件，按“今天 / 昨天 / 近 7 天 / 近一个月 / 更早”分组。顶部下拉框可以快速按文件类型筛选；设置里可以选择哪些类型参与显示、哪些活动参与记录。
 
-That's all there is to it!
+## 为什么能看到 Lexis 和 AI 的改动
 
-As with the file explorer view, you can:
+- Lexis 划词建词会创建文件，但不一定打开文件。本插件监听 Obsidian 的文件新建事件。
+- AI 工具直接改写库内文件时，Obsidian 检测到的修改事件会更新列表。插件启动时还会扫描文件时间，补回过去 30 天内的离线新建和修改。
+- 列表只知道文件发生了修改，无法可靠判断是 AI、人还是其他插件修改的。
 
-* Click items to open, ctrl-click to open in a new pane, right-click for a menu
-* Drag items to an editor to drop a link, to a header to open in a specific pane, or to a file explorer folder to move the file
-* Hover or ctrl-hover to view a content preview (as configured by the "Recent Files" toggle in the "Page Preview" settings)
+每个文件只显示一条记录，以最后一次活动排序。新建后两分钟内的模板填充仍显示为“新建”。“近 7 天”指前 2–6 个自然日，“近一个月”指前 7–29 个自然日。首次启用时只能根据文件的创建、修改时间补录；过去的打开时间无法从原插件恢复。
 
-## Screenshots
+## 安装
 
-![sidebar](https://raw.githubusercontent.com/tgrosinger/recent-files-obsidian/main/resources/screenshots/sidebar.png)
+将构建生成的 `main.js`、`manifest.json`、`styles.css` 放到库的 `.obsidian/plugins/recent-activity-hz/`，然后在 Obsidian 的“第三方插件”中启用 **Recent Activity HZ**。它使用新的插件 ID，可以与原版并存。
 
-## Other Plugin Support
+## 开发
 
-If you use the [Front Matter Title plugin](https://github.com/snezhig/obsidian-front-matter-title), enable the explorer module to name files in the Recent Files sidebar from the note frontmatter title.
+```sh
+pnpm install --frozen-lockfile
+pnpm build
+pnpm test
+pnpm exec eslint .
+```
 
-## Pricing
-
-This plugin is provided to everyone for free, however if you would like to
-say thanks or help support continued development, feel free to send a little
-my way through one of the following methods:
-
-[![GitHub Sponsors](https://img.shields.io/github/sponsors/tgrosinger?style=social)](https://github.com/sponsors/tgrosinger)
-[![Paypal](https://img.shields.io/badge/paypal-tgrosinger-yellow?style=social&logo=paypal)](https://paypal.me/tgrosinger)
-[<img src="https://cdn.buymeacoffee.com/buttons/v2/default-yellow.png" alt="BuyMeACoffee" width="100">](https://www.buymeacoffee.com/tgrosinger)
+本项目基于 Tony Grosinger 的 [Recent Files](https://github.com/tgrosinger/recent-files-obsidian)，保留原项目的 GPL-3.0 许可，详见 [LICENSE](LICENSE)。

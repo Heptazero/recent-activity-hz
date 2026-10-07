@@ -1,11 +1,12 @@
 {
-  "name": "recent-files-obsidian",
-  "version": "1.7.10",
-  "description": "List files by most recently opened",
+  "name": "recent-activity-hz",
+  "version": "0.1.0",
+  "description": "Show opened, created, and modified vault files by date and type",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "test": "node --test tests/*.test.mjs",
     "eslint": "eslint . --fix"
   },
   "keywords": [],

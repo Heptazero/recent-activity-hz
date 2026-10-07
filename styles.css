@@ -6,7 +6,34 @@
 
 .recent-files-title {
   justify-content: flex-start;
-  align-items: unset;
+  align-items: center;
+}
+
+.recent-activity-toolbar {
+  padding: 6px 8px 8px;
+}
+
+.recent-activity-type-filter {
+  width: 100%;
+}
+
+.recent-activity-group {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  padding: 12px 12px 4px;
+}
+
+.recent-activity-detail {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  margin-left: 8px;
+  white-space: nowrap;
+}
+
+.recent-activity-empty {
+  color: var(--text-muted);
+  padding: 12px;
 }
 
 .recent-files-file-delete {
@@ -21,14 +48,4 @@
 
 .recent-files-file-delete:hover {
   color: var(--nav-item-color-hover);
-}
-
-.recent-files-donation {
-  width: 70%;
-  margin: 0 auto;
-  text-align: center;
-}
-
-.recent-files-donate-button {
-  margin: 10px;
 }

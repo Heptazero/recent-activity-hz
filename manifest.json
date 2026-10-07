@@ -1,15 +1,10 @@
 {
-  "id": "recent-files-obsidian",
-  "name": "Recent Files",
-  "version": "1.7.10",
-  "minAppVersion": "0.16.3",
-  "description": "List files by most recently opened.",
-  "author": "Tony Grosinger",
-  "authorUrl": "https://grosinger.net",
-  "isDesktopOnly": false,
-  "fundingUrl": {
-    "Github Sponsor": "https://github.com/sponsors/tgrosinger",
-    "Buy me a Coffee": "https://buymeacoffee.com/tgrosinger",
-    "Paypal": "https://paypal.me/tgrosinger"
-  }
+  "id": "recent-activity-hz",
+  "name": "Recent Activity HZ",
+  "version": "0.1.0",
+  "minAppVersion": "1.7.2",
+  "description": "Show opened, created, and modified vault files by date and type.",
+  "author": "Tony Grosinger, Hzero",
+  "authorUrl": "https://github.com/tgrosinger/recent-files-obsidian",
+  "isDesktopOnly": false
 }
