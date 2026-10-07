@@ -25,6 +25,7 @@ const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac', 'op
 const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v']);
 
 export function fileTypeFor(path: string): FileType {
+  if (path.toLowerCase().endsWith('.excalidraw.md')) return 'canvas';
   const extension = path.split('.').pop()?.toLowerCase() ?? '';
   if (extension === 'md') return 'markdown';
   if (extension === 'pdf') return 'pdf';

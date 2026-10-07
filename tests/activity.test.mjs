@@ -7,6 +7,7 @@ test('classifies common vault files', () => {
   assert.equal(fileTypeFor('10_atom/词条.md'), 'markdown');
   assert.equal(fileTypeFor('paper.PDF'), 'pdf');
   assert.equal(fileTypeFor('board.canvas'), 'canvas');
+  assert.equal(fileTypeFor('Drawing.excalidraw.md'), 'canvas');
   assert.equal(fileTypeFor('photo.webp'), 'image');
   assert.equal(fileTypeFor('voice.opus'), 'audio');
   assert.equal(fileTypeFor('clip.mp4'), 'video');
