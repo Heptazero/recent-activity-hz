@@ -18,7 +18,7 @@ import {
 
 import { getApiSafe } from 'front-matter-plugin-api-provider';
 
-import { ActivityFile, ActivityKind, backfillTimes, dateGroupFor, FILE_TYPES, FileType, fileTypeFor, latestActivity } from './activity';
+import { ActivityFile, ActivityKind, backfillTimes, collectVisibleExtensions, dateGroupFor, extensionForPath, extensionLabel, isVisibleVaultPath, latestActivity } from './activity';
 
 interface BookmarkedFile {
   ctime: number;
@@ -53,7 +53,7 @@ interface RecentFilesData {
   trackOpened: boolean;
   trackCreated: boolean;
   trackModified: boolean;
-  enabledTypes: FileType[];
+  disabledExtensions: string[];
   clearedAt: number;
   dismissedFiles: Record<string, number>;
   maxLength?: number;
@@ -62,10 +62,6 @@ interface RecentFilesData {
 const defaultMaxLength: number = 50;
 const storedHistoryLength = 500;
 const backfillDays = 30;
-const fileTypeLabels: Record<FileType, string> = {
-  markdown: '笔记', pdf: 'PDF', canvas: '画布', image: '图片',
-  audio: '音频', video: '视频', other: '其他',
-};
 const activityLabels: Record<ActivityKind, string> = {
   opened: '打开', created: '新建', modified: '修改',
 };
@@ -81,16 +77,30 @@ const DEFAULT_DATA: RecentFilesData = {
   trackOpened: true,
   trackCreated: true,
   trackModified: true,
-  enabledTypes: [...FILE_TYPES],
+  disabledExtensions: [],
   clearedAt: 0,
   dismissedFiles: {},
 };
 
 const RecentFilesListViewType = 'recent-activity-hz-view';
 
+// Used only to preserve choices from the old category-based settings.
+const legacyImageExtensions = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp', 'heic']);
+const legacyAudioExtensions = new Set(['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac', 'opus']);
+const legacyVideoExtensions = new Set(['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v']);
+const legacyCategoryForExtension = (extension: string): string => {
+  if (extension === 'md') return 'markdown';
+  if (extension === 'pdf') return 'pdf';
+  if (extension === 'canvas' || extension === 'excalidraw') return 'canvas';
+  if (legacyImageExtensions.has(extension)) return 'image';
+  if (legacyAudioExtensions.has(extension)) return 'audio';
+  if (legacyVideoExtensions.has(extension)) return 'video';
+  return 'other';
+};
+
 class RecentFilesListView extends ItemView {
   private readonly plugin: RecentFilesPlugin;
-  private selectedType: FileType | 'all' = 'all';
+  private selectedExtension: string | null = null;
 
   // Always read through the plugin so the view stays in sync when loadData()
   // replaces the data object (e.g. via onExternalSettingsChange). Capturing the
@@ -151,18 +161,21 @@ class RecentFilesListView extends ItemView {
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const toolbar = rootEl.createDiv({ cls: 'recent-activity-toolbar' });
     const typeSelect = toolbar.createEl('select', { cls: 'dropdown recent-activity-type-filter' });
-    typeSelect.createEl('option', { text: '全部类型', value: 'all' });
-    for (const type of FILE_TYPES) {
-      if (this.data.enabledTypes.includes(type)) {
-        typeSelect.createEl('option', { text: fileTypeLabels[type], value: type });
+    typeSelect.createEl('option', { text: '全部后缀', value: '*' });
+    const availableExtensions = this.plugin.getAvailableExtensions();
+    for (const extension of availableExtensions) {
+      if (this.plugin.isExtensionEnabled(extension)) {
+        typeSelect.createEl('option', { text: extensionLabel(extension), value: extension });
       }
     }
-    if (this.selectedType !== 'all' && !this.data.enabledTypes.includes(this.selectedType)) {
-      this.selectedType = 'all';
+    if (this.selectedExtension !== null &&
+        (!availableExtensions.includes(this.selectedExtension) ||
+         !this.plugin.isExtensionEnabled(this.selectedExtension))) {
+      this.selectedExtension = null;
     }
-    typeSelect.value = this.selectedType;
+    typeSelect.value = this.selectedExtension ?? '*';
     typeSelect.addEventListener('change', () => {
-      this.selectedType = typeSelect.value as FileType | 'all';
+      this.selectedExtension = typeSelect.value === '*' ? null : typeSelect.value;
       this.redraw();
     });
     const childrenEl = rootEl.createDiv({ cls: 'nav-folder-children' });
@@ -181,8 +194,10 @@ class RecentFilesListView extends ItemView {
 
     const visibleFiles = this.data.recentFiles
       .filter((file) => this.app.vault.getFileByPath(file.path))
-      .filter((file) => this.data.enabledTypes.includes(fileTypeFor(file.path)))
-      .filter((file) => this.selectedType === 'all' || fileTypeFor(file.path) === this.selectedType)
+      .filter((file) => isVisibleVaultPath(file.path))
+      .filter((file) => this.plugin.isExtensionEnabled(extensionForPath(file.path)))
+      .filter((file) => this.selectedExtension === null ||
+        extensionForPath(file.path) === this.selectedExtension)
       .slice(0, this.data.maxLength || defaultMaxLength);
     if (visibleFiles.length === 0) {
       childrenEl.createDiv({ cls: 'recent-activity-empty', text: '暂无符合条件的文件' });
@@ -361,6 +376,8 @@ class RecentFilesListView extends ItemView {
 export default class RecentFilesPlugin extends Plugin {
   public data: RecentFilesData;
   private saveQueue: Promise<void> = Promise.resolve();
+  private legacyEnabledTypes: string[] | null = null;
+  private availableExtensionsCache: string[] | null = null;
 
   public readonly redrawView = (): void => {
     const leaf = this.app.workspace
@@ -413,17 +430,25 @@ export default class RecentFilesPlugin extends Plugin {
     // Vault 'create' also fires for existing files during initial load.
     this.app.workspace.onLayoutReady(() => {
       this.registerEvent(this.app.vault.on('create', this.handleCreate));
-      void this.rescan();
+      this.availableExtensionsCache = null;
+      void (async (): Promise<void> => {
+        await this.completeLegacyMigration();
+        await this.rescan();
+      })();
     });
 
     this.addSettingTab(new RecentFilesSettingTab(this.app, this));
   }
 
   public async loadData(): Promise<void> {
-    const saved = (await super.loadData()) as Partial<RecentFilesData> | null;
-    this.data = { ...DEFAULT_DATA, ...saved };
-    this.data.enabledTypes = (saved?.enabledTypes ?? FILE_TYPES)
-      .filter((type): type is FileType => FILE_TYPES.includes(type));
+    const saved = (await super.loadData()) as
+      (Partial<RecentFilesData> & { enabledTypes?: string[] }) | null;
+    const { enabledTypes, ...savedData } = saved ?? {};
+    this.legacyEnabledTypes = !Array.isArray(saved?.disabledExtensions) &&
+      Array.isArray(enabledTypes) ? enabledTypes : null;
+    this.data = { ...DEFAULT_DATA, ...savedData };
+    this.data.disabledExtensions = Array.isArray(saved?.disabledExtensions)
+      ? saved.disabledExtensions.map((extension) => extension.toLowerCase()) : [];
     this.data.dismissedFiles = saved?.dismissedFiles ?? {};
     this.data.recentFiles = saved?.recentFiles ?? [];
     this.sortAndTrim();
@@ -438,12 +463,15 @@ export default class RecentFilesPlugin extends Plugin {
 
   public async onExternalSettingsChange(): Promise<void> {
     await this.loadData();
+    this.availableExtensionsCache = null;
+    await this.completeLegacyMigration();
     await this.pruneLength();
     await this.pruneOmittedFiles();
     this.redrawView();
   }
 
   public readonly pruneOmittedFiles = async (): Promise<void> => {
+    this.availableExtensionsCache = null;
     const lengthBefore = this.data.recentFiles.length;
     this.data.recentFiles = this.data.recentFiles.filter(this.shouldAddFile);
     if (lengthBefore !== this.data.recentFiles.length) {
@@ -458,6 +486,7 @@ export default class RecentFilesPlugin extends Plugin {
   };
 
   public readonly shouldAddFile = (file: ActivityFile): boolean => {
+    if (!isVisibleVaultPath(file.path)) return false;
     // Matches for ignored Paths
     const patterns: string[] = this.data.omittedPaths.filter(
       (path) => path.length > 0,
@@ -546,6 +575,31 @@ export default class RecentFilesPlugin extends Plugin {
 
   public readonly rescan = (): Promise<void> => this.refreshFromVault();
 
+  public getAvailableExtensions(): string[] {
+    this.availableExtensionsCache ??= collectVisibleExtensions(
+      this.app.vault.getFiles()
+        .filter((file) => this.shouldAddFile(file))
+        .map((file) => file.path));
+    return this.availableExtensionsCache;
+  }
+
+  public isExtensionEnabled(extension: string): boolean {
+    if (this.legacyEnabledTypes) {
+      return this.legacyEnabledTypes.includes(legacyCategoryForExtension(extension));
+    }
+    return !this.data.disabledExtensions.includes(extension);
+  }
+
+  private async completeLegacyMigration(): Promise<void> {
+    if (!this.legacyEnabledTypes) return;
+    const allowed = this.legacyEnabledTypes;
+    this.data.disabledExtensions = this.getAvailableExtensions().filter((extension) =>
+      !allowed.includes(legacyCategoryForExtension(extension)));
+    this.legacyEnabledTypes = null;
+    await this.saveData();
+    this.redrawView();
+  }
+
   private sortAndTrim(): boolean {
     this.data.recentFiles.sort((a, b) =>
       latestActivity(b).at - latestActivity(a).at || a.path.localeCompare(b.path));
@@ -563,6 +617,8 @@ export default class RecentFilesPlugin extends Plugin {
   };
 
   private readonly handleCreate = (file: TAbstractFile): void => {
+    this.availableExtensionsCache = null;
+    this.redrawView();
     if (file instanceof TFile && this.data.trackCreated) {
       void this.recordActivity(file, 'created');
     }
@@ -626,6 +682,7 @@ export default class RecentFilesPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
+    this.availableExtensionsCache = null;
     const matches = (path: string): boolean => path === oldPath || path.startsWith(`${oldPath}/`);
     const nextPath = (path: string): string => file.path + path.slice(oldPath.length);
     let changed = false;
@@ -644,14 +701,15 @@ export default class RecentFilesPlugin extends Plugin {
     }
     if (changed) {
       this.data.recentFiles = this.data.recentFiles.filter(this.shouldAddFile);
-      this.redrawView();
       await this.saveData();
     }
+    this.redrawView();
   };
 
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
+    this.availableExtensionsCache = null;
     const matches = (path: string): boolean => path === file.path || path.startsWith(`${file.path}/`);
     let dismissed = false;
     for (const path of Object.keys(this.data.dismissedFiles)) {
@@ -664,9 +722,7 @@ export default class RecentFilesPlugin extends Plugin {
       (recentFile) => !matches(recentFile.path),
     );
 
-    if (beforeLen !== this.data.recentFiles.length) {
-      this.redrawView();
-    }
+    this.redrawView();
     if (beforeLen !== this.data.recentFiles.length || dismissed) {
       await this.saveData();
     }
@@ -777,15 +833,15 @@ class RecentFilesSettingTab extends PluginSettingTab {
       }));
 
     new Setting(containerEl).setName('文件类型').setHeading();
-    for (const type of FILE_TYPES) {
+    for (const extension of this.plugin.getAvailableExtensions()) {
       new Setting(containerEl)
-        .setName(fileTypeLabels[type])
+        .setName(extensionLabel(extension))
         .addToggle((toggle) => toggle
-          .setValue(this.plugin.data.enabledTypes.includes(type))
+          .setValue(this.plugin.isExtensionEnabled(extension))
           .onChange((value) => {
-            this.plugin.data.enabledTypes = value
-              ? [...this.plugin.data.enabledTypes, type]
-              : this.plugin.data.enabledTypes.filter((item) => item !== type);
+            this.plugin.data.disabledExtensions = value
+              ? this.plugin.data.disabledExtensions.filter((item) => item !== extension)
+              : [...this.plugin.data.disabledExtensions, extension];
             this.plugin.redrawView();
             void this.plugin.saveData();
           }));

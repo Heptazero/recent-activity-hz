@@ -1,6 +1,6 @@
 {
   "name": "recent-activity-hz",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Show opened, created, and modified vault files by date and type",
   "main": "main.js",
   "scripts": {

@@ -1,6 +1,6 @@
 # Recent Activity HZ
 
-这是 [Recent Files](https://github.com/tgrosinger/recent-files-obsidian) 的独立改版。它在侧边栏合并显示最近打开、新建和修改的文件，按“今天 / 昨天 / 近 7 天 / 近一个月 / 更早”分组。顶部下拉框可以快速按文件类型筛选；设置里可以选择哪些类型参与显示、哪些活动参与记录。
+这是 [Recent Files](https://github.com/tgrosinger/recent-files-obsidian) 的独立改版。它在侧边栏合并显示最近打开、新建和修改的文件，按“今天 / 昨天 / 近 7 天 / 近一个月 / 更早”分组。顶部下拉框和设置页会从当前库中的可见文件生成后缀选项，例如 `.MD`、`.PDF`、`.IPYNB`；以 `.` 开头的隐藏文件或目录，以及插件设置中排除的文件，不参与统计。`.canvas`、`.excalidraw`、`.excalidraw.md` 合在 `.CANVAS / .EXCALIDRAW` 一项，普通 `.md` 仍归 `.MD`。
 
 ## 为什么能看到 Lexis 和 AI 的改动
 

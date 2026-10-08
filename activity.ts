@@ -1,14 +1,3 @@
-export const FILE_TYPES = [
-  'markdown',
-  'pdf',
-  'canvas',
-  'image',
-  'audio',
-  'video',
-  'other',
-] as const;
-
-export type FileType = (typeof FILE_TYPES)[number];
 export type ActivityKind = 'opened' | 'created' | 'modified';
 export type DateGroup = 'today' | 'yesterday' | 'week' | 'month' | 'older';
 
@@ -20,20 +9,32 @@ export interface ActivityFile {
   modifiedAt?: number;
 }
 
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif', 'bmp', 'heic']);
-const AUDIO_EXTENSIONS = new Set(['mp3', 'm4a', 'wav', 'ogg', 'flac', 'aac', 'opus']);
-const VIDEO_EXTENSIONS = new Set(['mp4', 'mov', 'webm', 'mkv', 'avi', 'm4v']);
+export function isVisibleVaultPath(path: string): boolean {
+  return path.split('/').every((part) => part.length > 0 && !part.startsWith('.'));
+}
 
-export function fileTypeFor(path: string): FileType {
-  if (path.toLowerCase().endsWith('.excalidraw.md')) return 'canvas';
-  const extension = path.split('.').pop()?.toLowerCase() ?? '';
-  if (extension === 'md') return 'markdown';
-  if (extension === 'pdf') return 'pdf';
-  if (extension === 'canvas' || extension === 'excalidraw') return 'canvas';
-  if (IMAGE_EXTENSIONS.has(extension)) return 'image';
-  if (AUDIO_EXTENSIONS.has(extension)) return 'audio';
-  if (VIDEO_EXTENSIONS.has(extension)) return 'video';
-  return 'other';
+export function extensionForPath(path: string): string {
+  const name = path.split('/').pop() ?? '';
+  if (name.toLowerCase().endsWith('.excalidraw.md')) return 'canvas';
+  const dot = name.lastIndexOf('.');
+  const extension = dot > 0 && dot < name.length - 1 ? name.slice(dot + 1).toLowerCase() : '';
+  return extension === 'excalidraw' ? 'canvas' : extension;
+}
+
+export function extensionLabel(extension: string): string {
+  if (extension === 'canvas') return '.CANVAS / .EXCALIDRAW';
+  return extension ? `.${extension.toUpperCase()}` : '无后缀';
+}
+
+export function collectVisibleExtensions(paths: Iterable<string>): string[] {
+  const extensions = new Set<string>();
+  for (const path of paths) {
+    if (isVisibleVaultPath(path)) extensions.add(extensionForPath(path));
+  }
+  const priority = (extension: string): number =>
+    extension === 'md' ? 0 : extension === 'pdf' ? 1 : extension === '' ? 3 : 2;
+  return [...extensions].sort((a, b) =>
+    priority(a) - priority(b) || a.localeCompare(b));
 }
 
 export function latestActivity(file: ActivityFile): { at: number; kind: ActivityKind | null } {

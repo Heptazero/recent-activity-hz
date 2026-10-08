@@ -1,17 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { backfillTimes, dateGroupFor, fileTypeFor, latestActivity } from '../activity.ts';
+import { backfillTimes, collectVisibleExtensions, dateGroupFor, extensionForPath, extensionLabel, isVisibleVaultPath, latestActivity } from '../activity.ts';
 
-test('classifies common vault files', () => {
-  assert.equal(fileTypeFor('10_atom/词条.md'), 'markdown');
-  assert.equal(fileTypeFor('paper.PDF'), 'pdf');
-  assert.equal(fileTypeFor('board.canvas'), 'canvas');
-  assert.equal(fileTypeFor('Drawing.excalidraw.md'), 'canvas');
-  assert.equal(fileTypeFor('photo.webp'), 'image');
-  assert.equal(fileTypeFor('voice.opus'), 'audio');
-  assert.equal(fileTypeFor('clip.mp4'), 'video');
-  assert.equal(fileTypeFor('data.json'), 'other');
+test('uses real suffixes and combines both canvas formats', () => {
+  assert.equal(extensionForPath('10_atom/词条.md'), 'md');
+  assert.equal(extensionForPath('paper.PDF'), 'pdf');
+  assert.equal(extensionForPath('Drawing.excalidraw.md'), 'canvas');
+  assert.equal(extensionForPath('Drawing.excalidraw'), 'canvas');
+  assert.equal(extensionForPath('board.canvas'), 'canvas');
+  assert.equal(extensionLabel('md'), '.MD');
+  assert.equal(extensionLabel('pdf'), '.PDF');
+  assert.equal(extensionLabel('canvas'), '.CANVAS / .EXCALIDRAW');
+});
+
+test('lists every visible suffix and skips hidden paths', () => {
+  const paths = [
+    'note.md', 'paper.PDF', 'board.canvas', 'draw.excalidraw.md', 'draw.excalidraw',
+    'experiment.ipynb', 'image.PNG', 'README', '.hidden.md',
+    '.obsidian/plugins/plugin/data.json', 'folder/.secret/file.py',
+  ];
+  assert.equal(isVisibleVaultPath('folder/.secret/file.py'), false);
+  assert.deepEqual(collectVisibleExtensions(paths),
+    ['md', 'pdf', 'canvas', 'ipynb', 'png', '']);
 });
 
 test('keeps immediate template writes under new-file activity', () => {

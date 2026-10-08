@@ -1,7 +1,7 @@
 {
   "id": "recent-activity-hz",
   "name": "Recent Activity HZ",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "minAppVersion": "1.7.2",
   "description": "Show opened, created, and modified vault files by date and type.",
   "author": "Tony Grosinger, Hzero",
