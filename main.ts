@@ -157,20 +157,20 @@ class RecentFilesListView extends ItemView {
 
   public readonly redraw = (): void => {
     const openFile = this.app.workspace.getActiveFile();
+    const eligibleFiles = this.data.recentFiles
+      .filter((file) => this.app.vault.getFileByPath(file.path))
+      .filter((file) => isVisibleVaultPath(file.path))
+      .filter((file) => this.plugin.isExtensionEnabled(extensionForPath(file.path)));
+    const availableExtensions = collectVisibleExtensions(eligibleFiles.map((file) => file.path));
 
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
     const toolbar = rootEl.createDiv({ cls: 'recent-activity-toolbar' });
     const typeSelect = toolbar.createEl('select', { cls: 'dropdown recent-activity-type-filter' });
     typeSelect.createEl('option', { text: '全部后缀', value: '*' });
-    const availableExtensions = this.plugin.getAvailableExtensions();
     for (const extension of availableExtensions) {
-      if (this.plugin.isExtensionEnabled(extension)) {
-        typeSelect.createEl('option', { text: extensionLabel(extension), value: extension });
-      }
+      typeSelect.createEl('option', { text: extensionLabel(extension), value: extension });
     }
-    if (this.selectedExtension !== null &&
-        (!availableExtensions.includes(this.selectedExtension) ||
-         !this.plugin.isExtensionEnabled(this.selectedExtension))) {
+    if (this.selectedExtension !== null && !availableExtensions.includes(this.selectedExtension)) {
       this.selectedExtension = null;
     }
     typeSelect.value = this.selectedExtension ?? '*';
@@ -192,10 +192,7 @@ class RecentFilesListView extends ItemView {
       ? frontMatterApi.getResolverFactory()?.createResolver('explorer')
       : null;
 
-    const visibleFiles = this.data.recentFiles
-      .filter((file) => this.app.vault.getFileByPath(file.path))
-      .filter((file) => isVisibleVaultPath(file.path))
-      .filter((file) => this.plugin.isExtensionEnabled(extensionForPath(file.path)))
+    const visibleFiles = eligibleFiles
       .filter((file) => this.selectedExtension === null ||
         extensionForPath(file.path) === this.selectedExtension)
       .slice(0, this.data.maxLength || defaultMaxLength);
