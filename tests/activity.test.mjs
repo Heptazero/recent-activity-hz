@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { backfillTimes, collectVisibleExtensions, dateGroupFor, extensionForPath, extensionLabel, isVisibleVaultPath, latestActivity } from '../activity.ts';
+import { backfillTimes, collectVisibleExtensions, countVisibleExtensions, dateGroupFor, extensionForPath, extensionLabel, isVisibleVaultPath, latestActivity, listVisibleFiles } from '../activity.ts';
 
 test('uses real suffixes and combines both canvas formats', () => {
   assert.equal(extensionForPath('10_atom/词条.md'), 'md');
@@ -23,6 +23,33 @@ test('lists every visible suffix and skips hidden paths', () => {
   assert.equal(isVisibleVaultPath('folder/.secret/file.py'), false);
   assert.deepEqual(collectVisibleExtensions(paths),
     ['md', 'pdf', 'canvas', 'ipynb', 'png', '']);
+});
+
+test('counts visible files by suffix, including plugin formats and grouped canvas files', () => {
+  assert.deepEqual([...countVisibleExtensions([
+    'note.md', 'paper.PDF', 'book.epub', 'book2.EPUB',
+    'board.canvas', 'sketch.excalidraw', 'sketch.excalidraw.md',
+    '.obsidian/plugins/reader/main.js', 'private/.hidden.epub',
+  ])], [
+    ['md', 1], ['pdf', 1], ['canvas', 3], ['epub', 2],
+  ]);
+});
+
+test('scans adapter folders to find plugin file formats without entering hidden folders', async () => {
+  const visited = [];
+  const files = await listVisibleFiles(async (folder) => {
+    visited.push(folder);
+    if (folder === '') return {
+      files: ['note.md', '.hidden.epub'], folders: ['books', '.obsidian'],
+    };
+    if (folder === 'books') return {
+      files: ['books/novel.epub', 'books/sketch.excalidraw.md'], folders: [],
+    };
+    throw new Error(`Unexpected folder: ${folder}`);
+  });
+  assert.deepEqual(visited, ['', 'books']);
+  assert.deepEqual([...countVisibleExtensions(files)],
+    [['md', 1], ['canvas', 1], ['epub', 1]]);
 });
 
 test('keeps immediate template writes under new-file activity', () => {

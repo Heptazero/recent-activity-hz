@@ -26,15 +26,42 @@ export function extensionLabel(extension: string): string {
   return extension ? `.${extension.toUpperCase()}` : '无后缀';
 }
 
+const extensionPriority = (extension: string): number =>
+  extension === 'md' ? 0 : extension === 'pdf' ? 1 : extension === '' ? 3 : 2;
+
+const compareExtensions = (a: string, b: string): number =>
+  extensionPriority(a) - extensionPriority(b) || a.localeCompare(b);
+
 export function collectVisibleExtensions(paths: Iterable<string>): string[] {
   const extensions = new Set<string>();
   for (const path of paths) {
     if (isVisibleVaultPath(path)) extensions.add(extensionForPath(path));
   }
-  const priority = (extension: string): number =>
-    extension === 'md' ? 0 : extension === 'pdf' ? 1 : extension === '' ? 3 : 2;
-  return [...extensions].sort((a, b) =>
-    priority(a) - priority(b) || a.localeCompare(b));
+  return [...extensions].sort(compareExtensions);
+}
+
+export async function listVisibleFiles(
+  list: (folder: string) => Promise<{ files: string[]; folders: string[] }>,
+): Promise<string[]> {
+  const paths: string[] = [];
+  const folders = [''];
+  while (folders.length > 0) {
+    const folder = folders.pop() ?? '';
+    const listed = await list(folder);
+    paths.push(...listed.files.filter(isVisibleVaultPath));
+    folders.push(...listed.folders.filter(isVisibleVaultPath));
+  }
+  return paths;
+}
+
+export function countVisibleExtensions(paths: Iterable<string>): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const path of paths) {
+    if (!isVisibleVaultPath(path)) continue;
+    const extension = extensionForPath(path);
+    counts.set(extension, (counts.get(extension) ?? 0) + 1);
+  }
+  return new Map([...counts].sort(([a], [b]) => compareExtensions(a, b)));
 }
 
 export function latestActivity(file: ActivityFile): { at: number; kind: ActivityKind | null } {

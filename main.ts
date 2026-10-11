@@ -18,7 +18,7 @@ import {
 
 import { getApiSafe } from 'front-matter-plugin-api-provider';
 
-import { ActivityFile, ActivityKind, backfillTimes, collectVisibleExtensions, dateGroupFor, extensionForPath, extensionLabel, isVisibleVaultPath, latestActivity } from './activity';
+import { ActivityFile, ActivityKind, backfillTimes, collectVisibleExtensions, countVisibleExtensions, dateGroupFor, extensionForPath, extensionLabel, isVisibleVaultPath, latestActivity, listVisibleFiles } from './activity';
 
 interface BookmarkedFile {
   ctime: number;
@@ -374,7 +374,6 @@ export default class RecentFilesPlugin extends Plugin {
   public data: RecentFilesData;
   private saveQueue: Promise<void> = Promise.resolve();
   private legacyEnabledTypes: string[] | null = null;
-  private availableExtensionsCache: string[] | null = null;
 
   public readonly redrawView = (): void => {
     const leaf = this.app.workspace
@@ -427,7 +426,6 @@ export default class RecentFilesPlugin extends Plugin {
     // Vault 'create' also fires for existing files during initial load.
     this.app.workspace.onLayoutReady(() => {
       this.registerEvent(this.app.vault.on('create', this.handleCreate));
-      this.availableExtensionsCache = null;
       void (async (): Promise<void> => {
         await this.completeLegacyMigration();
         await this.rescan();
@@ -460,7 +458,6 @@ export default class RecentFilesPlugin extends Plugin {
 
   public async onExternalSettingsChange(): Promise<void> {
     await this.loadData();
-    this.availableExtensionsCache = null;
     await this.completeLegacyMigration();
     await this.pruneLength();
     await this.pruneOmittedFiles();
@@ -468,7 +465,6 @@ export default class RecentFilesPlugin extends Plugin {
   }
 
   public readonly pruneOmittedFiles = async (): Promise<void> => {
-    this.availableExtensionsCache = null;
     const lengthBefore = this.data.recentFiles.length;
     this.data.recentFiles = this.data.recentFiles.filter(this.shouldAddFile);
     if (lengthBefore !== this.data.recentFiles.length) {
@@ -572,12 +568,10 @@ export default class RecentFilesPlugin extends Plugin {
 
   public readonly rescan = (): Promise<void> => this.refreshFromVault();
 
-  public getAvailableExtensions(): string[] {
-    this.availableExtensionsCache ??= collectVisibleExtensions(
-      this.app.vault.getFiles()
-        .filter((file) => this.shouldAddFile(file))
-        .map((file) => file.path));
-    return this.availableExtensionsCache;
+  public async scanVisibleExtensionCounts(): Promise<Map<string, number>> {
+    const paths = await listVisibleFiles((folder) => this.app.vault.adapter.list(folder));
+    return countVisibleExtensions(paths.filter((path) =>
+      this.shouldAddFile({ path, basename: path.split('/').pop() ?? path })));
   }
 
   public isExtensionEnabled(extension: string): boolean {
@@ -590,7 +584,7 @@ export default class RecentFilesPlugin extends Plugin {
   private async completeLegacyMigration(): Promise<void> {
     if (!this.legacyEnabledTypes) return;
     const allowed = this.legacyEnabledTypes;
-    this.data.disabledExtensions = this.getAvailableExtensions().filter((extension) =>
+    this.data.disabledExtensions = [...(await this.scanVisibleExtensionCounts()).keys()].filter((extension) =>
       !allowed.includes(legacyCategoryForExtension(extension)));
     this.legacyEnabledTypes = null;
     await this.saveData();
@@ -614,7 +608,6 @@ export default class RecentFilesPlugin extends Plugin {
   };
 
   private readonly handleCreate = (file: TAbstractFile): void => {
-    this.availableExtensionsCache = null;
     this.redrawView();
     if (file instanceof TFile && this.data.trackCreated) {
       void this.recordActivity(file, 'created');
@@ -679,7 +672,6 @@ export default class RecentFilesPlugin extends Plugin {
     file: TAbstractFile,
     oldPath: string,
   ): Promise<void> => {
-    this.availableExtensionsCache = null;
     const matches = (path: string): boolean => path === oldPath || path.startsWith(`${oldPath}/`);
     const nextPath = (path: string): string => file.path + path.slice(oldPath.length);
     let changed = false;
@@ -706,7 +698,6 @@ export default class RecentFilesPlugin extends Plugin {
   private readonly handleDelete = async (
     file: TAbstractFile,
   ): Promise<void> => {
-    this.availableExtensionsCache = null;
     const matches = (path: string): boolean => path === file.path || path.startsWith(`${file.path}/`);
     let dismissed = false;
     for (const path of Object.keys(this.data.dismissedFiles)) {
@@ -745,6 +736,15 @@ class RecentFilesSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
+    new Setting(containerEl)
+      .setName('显示的文件类型')
+      .setDesc('扫描库中可见且未排除的文件。关闭开关后，该类型不会出现在最近活动中。')
+      .setHeading();
+    const fileTypesEl = containerEl.createDiv();
+    fileTypesEl.setText('正在扫描笔记库…');
+    void this.displayFileTypes(fileTypesEl);
+
+    new Setting(containerEl).setName('其他设置').setHeading();
     const patternFragment = activeDocument.createDocumentFragment();
     const link = activeDocument.createElement('a');
     link.href =
@@ -829,21 +829,6 @@ class RecentFilesSettingTab extends PluginSettingTab {
         void this.plugin.saveData();
       }));
 
-    new Setting(containerEl).setName('文件类型').setHeading();
-    for (const extension of this.plugin.getAvailableExtensions()) {
-      new Setting(containerEl)
-        .setName(extensionLabel(extension))
-        .addToggle((toggle) => toggle
-          .setValue(this.plugin.isExtensionEnabled(extension))
-          .onChange((value) => {
-            this.plugin.data.disabledExtensions = value
-              ? this.plugin.data.disabledExtensions.filter((item) => item !== extension)
-              : [...this.plugin.data.disabledExtensions, extension];
-            this.plugin.redrawView();
-            void this.plugin.saveData();
-          }));
-    }
-
     new Setting(containerEl)
       .setName('列表长度')
       .setDesc('筛选后最多显示多少个文件。')
@@ -873,7 +858,35 @@ class RecentFilesSettingTab extends PluginSettingTab {
           void this.plugin.saveData();
         };
       });
+  }
 
+  private async displayFileTypes(containerEl: HTMLElement): Promise<void> {
+    try {
+      const counts = await this.plugin.scanVisibleExtensionCounts();
+      if (!containerEl.isConnected) return;
+      containerEl.empty();
+      if (counts.size === 0) {
+        containerEl.setText('没有扫描到可显示的文件。');
+        return;
+      }
+      for (const [extension, count] of counts) {
+        new Setting(containerEl)
+          .setName(extensionLabel(extension))
+          .setDesc(`${count} 个文件`)
+          .addToggle((toggle) => toggle
+            .setValue(this.plugin.isExtensionEnabled(extension))
+            .onChange((value) => {
+              this.plugin.data.disabledExtensions = value
+                ? this.plugin.data.disabledExtensions.filter((item) => item !== extension)
+                : [...this.plugin.data.disabledExtensions, extension];
+              this.plugin.redrawView();
+              void this.plugin.saveData();
+            }));
+      }
+    } catch (error) {
+      console.error('Recent Activity HZ: Failed to scan file types', error);
+      if (containerEl.isConnected) containerEl.setText('扫描失败，请重新打开设置。');
+    }
   }
 }
 
