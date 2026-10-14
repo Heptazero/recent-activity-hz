@@ -9,6 +9,46 @@
   align-items: center;
 }
 
+.recent-activity-view {
+  container-type: inline-size;
+}
+
+.recent-files-title.recent-activity-kind-opened {
+  --recent-activity-kind-color: var(--color-blue);
+}
+
+.recent-files-title.recent-activity-kind-created {
+  --recent-activity-kind-color: var(--color-green);
+}
+
+.recent-files-title.recent-activity-kind-modified {
+  --recent-activity-kind-color: var(--color-orange);
+}
+
+.recent-files-title[class*="recent-activity-kind-"] {
+  box-shadow: inset 3px 0 var(--recent-activity-kind-color);
+}
+
+.recent-files-title[class*="recent-activity-kind-"]:not(.is-active) {
+  background-color: color-mix(in srgb, var(--recent-activity-kind-color) 10%, transparent);
+}
+
+.recent-files-title[class*="recent-activity-kind-"]:not(.is-active):hover {
+  background-color: color-mix(in srgb, var(--recent-activity-kind-color) 12%, var(--background-modifier-hover));
+}
+
+.recent-activity-hide-details .recent-activity-detail,
+.recent-activity-hide-details .tree-item-spacer {
+  display: none;
+}
+
+@container (max-width: 340px) {
+  .recent-activity-detail,
+  .tree-item-spacer {
+    display: none;
+  }
+}
+
 .recent-activity-toolbar {
   padding: 6px 8px 8px;
 }

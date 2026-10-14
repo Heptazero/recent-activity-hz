@@ -53,6 +53,7 @@ interface RecentFilesData {
   trackOpened: boolean;
   trackCreated: boolean;
   trackModified: boolean;
+  showActivityDetails: boolean;
   disabledExtensions: string[];
   clearedAt: number;
   dismissedFiles: Record<string, number>;
@@ -77,6 +78,7 @@ const DEFAULT_DATA: RecentFilesData = {
   trackOpened: true,
   trackCreated: true,
   trackModified: true,
+  showActivityDetails: false,
   disabledExtensions: [],
   clearedAt: 0,
   dismissedFiles: {},
@@ -116,6 +118,7 @@ class RecentFilesListView extends ItemView {
   }
 
   public async onOpen(): Promise<void> {
+    this.contentEl.addClass('recent-activity-view');
     this.redraw();
   }
 
@@ -164,6 +167,7 @@ class RecentFilesListView extends ItemView {
     const availableExtensions = collectVisibleExtensions(eligibleFiles.map((file) => file.path));
 
     const rootEl = createDiv({ cls: 'nav-folder mod-root' });
+    if (!this.data.showActivityDetails) rootEl.addClass('recent-activity-hide-details');
     const toolbar = rootEl.createDiv({ cls: 'recent-activity-toolbar' });
     const typeSelect = toolbar.createEl('select', { cls: 'dropdown recent-activity-type-filter' });
     typeSelect.createEl('option', { text: '全部后缀', value: '*' });
@@ -213,6 +217,7 @@ class RecentFilesListView extends ItemView {
       const navFileTitle = navFile.createDiv({
         cls: 'tree-item-self is-clickable nav-file-title recent-files-title',
       });
+      if (activity.kind) navFileTitle.addClass(`recent-activity-kind-${activity.kind}`);
       const navFileTitleContent = navFileTitle.createDiv({
         cls: 'tree-item-inner nav-file-title-content',
       });
@@ -248,7 +253,9 @@ class RecentFilesListView extends ItemView {
         navFileTag.setText(extension);
       }
 
-      setTooltip(navFile, currentFile.path);
+      setTooltip(navFile, activity.kind
+        ? `${currentFile.path} · ${activityLabels[activity.kind]}`
+        : currentFile.path);
 
       if (openFile && currentFile.path === openFile.path) {
         navFileTitle.addClass('is-active');
@@ -745,6 +752,16 @@ class RecentFilesSettingTab extends PluginSettingTab {
     void this.displayFileTypes(fileTypesEl);
 
     new Setting(containerEl).setName('其他设置').setHeading();
+    new Setting(containerEl)
+      .setName('显示活动文字和时间')
+      .setDesc('绿色表示新建，橙色表示修改，蓝色表示打开。窄侧栏会自动隐藏右侧文字。')
+      .addToggle((toggle) => toggle
+        .setValue(this.plugin.data.showActivityDetails)
+        .onChange((value) => {
+          this.plugin.data.showActivityDetails = value;
+          this.plugin.redrawView();
+          void this.plugin.saveData();
+        }));
     const patternFragment = activeDocument.createDocumentFragment();
     const link = activeDocument.createElement('a');
     link.href =
